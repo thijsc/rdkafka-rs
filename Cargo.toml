@@ -1,0 +1,10 @@
+[package]
+name = "rdkafka"
+version = "0.1.0"
+authors = ["Thijs Cadier <thijs@appsignal.com>"]
+
+[dependencies]
+
+[dependencies.rdkafka-sys]
+path = "rdkafka-sys"
+version = "0.9.1"

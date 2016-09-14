@@ -1,0 +1,8 @@
+[package]
+name = "rdkafka-sys"
+version = "0.9.1"
+build = "build.rs"
+authors = ["Thijs Cadier <thijs@appsignal.com>"]
+
+[build-dependencies]
+bindgen = "*"
