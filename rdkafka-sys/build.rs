@@ -36,6 +36,7 @@ fn main() {
         let mut command = Command::new("bash");
         command.arg("configure");
         command.arg("--enable-ssl");
+        command.arg("--disable-sasl");
         command.arg("--enable-static");
         command.arg(format!("--prefix={}", &build_dir));
         command.current_dir(&src_path);

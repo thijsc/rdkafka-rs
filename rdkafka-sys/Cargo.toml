@@ -4,5 +4,9 @@ version = "0.9.1"
 build = "build.rs"
 authors = ["Thijs Cadier <thijs@appsignal.com>"]
 
+[dependencies]
+openssl-sys = "> 0.7.0"
+libz-sys = "> 1.0.0"
+
 [build-dependencies]
 bindgen = "*"

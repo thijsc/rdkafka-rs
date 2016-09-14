@@ -4,7 +4,7 @@ use rdkafka_sys::bindings;
 
 #[derive(Debug,PartialEq)]
 pub struct KafkaConfig {
-    inner: *mut bindings::rd_kafka_conf_t
+    pub inner: *mut bindings::rd_kafka_conf_t
 }
 
 #[derive(Debug,PartialEq)]
@@ -70,14 +70,6 @@ impl KafkaConfig {
                 Some(dest.to_string_lossy().to_string())
             },
             _ => None
-        }
-    }
-}
-
-impl Drop for KafkaConfig {
-    fn drop(&mut self) {
-        unsafe {
-            bindings::rd_kafka_conf_destroy(self.inner);
         }
     }
 }
