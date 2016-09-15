@@ -4,6 +4,7 @@ use rdkafka_sys::bindings;
 
 use super::KafkaResponseError;
 use super::config::KafkaConfig;
+use super::message::KafkaMessage;
 
 #[derive(Debug,PartialEq)]
 pub struct KafkaConsumer {
@@ -78,8 +79,21 @@ impl KafkaConsumer {
 
     }
 
-    pub fn poll(&self) {
+    pub fn poll(&self, timeout_ms: i32) -> Result<Option<KafkaMessage>, KafkaResponseError> {
+        let message_ptr = unsafe {
+            bindings::rd_kafka_consumer_poll(self.inner, timeout_ms)
+        };
 
+        if message_ptr.is_null() {
+            return Ok(None)
+        }
+
+        let message = KafkaMessage::from_rd_message(message_ptr);
+        if message.error().is_error() {
+            Err(message.error())
+        } else {
+            Ok(Some(message))
+        }
     }
 
     pub fn commit(&mut self) {
@@ -104,7 +118,7 @@ mod tests {
     use super::super::config::*;
 
     #[test]
-    fn test_new_and_subscribe() {
+    fn test_new_subscribe_poll_unsubscribe() {
         let mut config = KafkaConfig::new();
         config.set("group.id", "test").expect("Setting group id should not fail");
 
@@ -113,6 +127,7 @@ mod tests {
 
         let mut consumer = consumer_result.unwrap();
         consumer.subscribe(&["test_topic"]).expect("Subscribing should not fail");
+        assert!(consumer.poll(100).expect("Polling should not fail").is_none());
         consumer.unsubscribe().expect("Unsubscribing should not fail");
     }
 }

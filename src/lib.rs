@@ -7,8 +7,11 @@ use rdkafka_sys::bindings;
 
 pub mod config;
 pub mod consumer;
+pub mod message;
+pub mod producer;
 
 const RD_KAFKA_PARTITION_UA: i32 = -1;
+const RD_KAFKA_MSG_F_FREE: i32 = 0x1;
 
 pub struct KafkaResponseError {
     inner: bindings::rd_kafka_resp_err_t
