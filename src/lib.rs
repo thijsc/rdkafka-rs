@@ -12,6 +12,7 @@ pub mod producer;
 
 const RD_KAFKA_PARTITION_UA: i32 = -1;
 const RD_KAFKA_MSG_F_FREE: i32 = 0x1;
+const RD_KAFKA_MSG_F_COPY: i32 = 0x2;
 
 pub struct KafkaResponseError {
     inner: bindings::rd_kafka_resp_err_t

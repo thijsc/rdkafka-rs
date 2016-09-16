@@ -1,6 +1,5 @@
 use std::ffi::CString;
 use std::io;
-use std::mem;
 use std::ptr;
 use std::os::raw::c_void;
 
@@ -51,11 +50,14 @@ impl KafkaProducer {
         }
     }
 
+    /// Asynchronously produce a message
+    /// Payload and key content will be copied and message will be added to queue.
+    /// TODO: See if we can reliably use RD_KAFKA_MSG_F_FREE with a Rust Vector to avoid copying.
     pub fn produce(
         &self,
         topic: &str,
-        mut payload: Vec<u8>,
-        mut key: Option<Vec<u8>>,
+        mut payload: &[u8],
+        mut key: Option<&[u8]>,
         partition: Option<i32>
     ) -> Result<(), ProduceError> {
         // TODO Make helper with error handling for topic
@@ -68,6 +70,7 @@ impl KafkaProducer {
         };
         assert!(!topic.is_null());
 
+        let payload_len = payload.len();
         let key_len = match key {
             Some(ref k) => k.len(),
             None => 0
@@ -77,11 +80,11 @@ impl KafkaProducer {
             bindings::rd_kafka_produce(
                 topic,
                 partition.unwrap_or(super::RD_KAFKA_PARTITION_UA),
-                super::RD_KAFKA_MSG_F_FREE,
-                payload.as_mut_ptr() as *mut c_void,
-                payload.len(),
+                super::RD_KAFKA_MSG_F_COPY,
+                payload.as_ptr() as *mut c_void,
+                payload_len,
                 match key {
-                    Some(ref mut k) => k.as_mut_ptr() as *mut c_void,
+                    Some(ref mut k) => k.as_ptr() as *mut c_void,
                     None => ptr::null_mut()
                 },
                 key_len,
@@ -92,9 +95,6 @@ impl KafkaProducer {
         unsafe { bindings::rd_kafka_topic_destroy(topic) }
 
         if result == 0 {
-            // The C side will take responsibility over this memory
-            mem::forget(payload);
-            mem::forget(key);
             Ok(())
         } else {
             match io::Error::last_os_error().raw_os_error() {
@@ -121,8 +121,8 @@ mod tests {
     fn test_produce() {
         let producer = KafkaProducer::new(KafkaConfig::new()).expect("Producer creation should succeed");
         assert_eq!(producer.queue_length(), 0);
-        producer.produce("test_topic", vec![1], None, None).expect("Producing should succeed");
-        producer.produce("test_topic", vec![1], Some(vec![1]), Some(1)).expect("Producing should succeed");
+        producer.produce("test_topic", &[1], None, None).expect("Producing should succeed");
+        producer.produce("test_topic", &[1], Some(&[1]), Some(1)).expect("Producing should succeed");
         assert_eq!(producer.queue_length(), 2);
     }
 }
