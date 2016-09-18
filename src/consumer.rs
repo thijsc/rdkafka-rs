@@ -1,4 +1,6 @@
 use std::ffi::CString;
+use std::iter::Iterator;
+use std::ptr;
 
 use rdkafka_sys::bindings;
 
@@ -7,9 +9,15 @@ use super::config::KafkaConfig;
 use super::message::KafkaMessage;
 
 #[derive(Debug,PartialEq)]
+pub enum ConsumeError {
+
+}
+
+#[derive(Debug,PartialEq)]
 pub struct KafkaConsumer {
-    config: KafkaConfig, // config needs to stick around for the lifetime
-    inner: *mut bindings::rd_kafka_t
+    inner: *mut bindings::rd_kafka_t,
+    config: KafkaConfig,
+    timeout_ms: i32
 }
 
 impl KafkaConsumer {
@@ -31,29 +39,35 @@ impl KafkaConsumer {
         if inner.is_null() {
             Err(err.to_string_lossy().to_string())
         } else {
+            // Redirect the main poll queue to this consumer.
+            unsafe {
+                bindings::rd_kafka_poll_set_consumer(inner); // TODO error handling
+            }
+
             Ok(KafkaConsumer {
+                inner: inner,
                 config: config,
-                inner: inner
+                timeout_ms: 100
             })
         }
     }
 
-    pub fn subscribe(&mut self, partitions: &[&str]) -> Result<(), KafkaResponseError> {
-        let topics = unsafe { bindings::rd_kafka_topic_partition_list_new(partitions.len() as i32) };
+    pub fn subscribe(&mut self, topics: &[&str]) -> Result<(), KafkaResponseError> {
+        let topic_list = unsafe { bindings::rd_kafka_topic_partition_list_new(topics.len() as i32) };
 
-        for partition in partitions {
+        for topic in topics {
             unsafe {
                 bindings::rd_kafka_topic_partition_list_add(
-                    topics,
-                    CString::new(*partition).expect("Converting partition name to CString failed").into_raw(),
+                    topic_list,
+                    CString::new(*topic).expect("Converting partition name to CString failed").into_raw(),
                     super::RD_KAFKA_PARTITION_UA
                 );
             }
         }
 
-        let result = KafkaResponseError::new(unsafe { bindings::rd_kafka_subscribe(self.inner, topics) });
+        let result = KafkaResponseError::new(unsafe { bindings::rd_kafka_subscribe(self.inner, topic_list) });
 
-        unsafe { bindings::rd_kafka_topic_partition_list_destroy(topics) };
+        unsafe { bindings::rd_kafka_topic_partition_list_destroy(topic_list) };
 
         if result.is_error() {
             Err(result)
@@ -71,33 +85,62 @@ impl KafkaConsumer {
         }
     }
 
-    pub fn pause(&mut self) {
-
-    }
-
-    pub fn resume(&mut self) {
-
-    }
-
-    pub fn poll(&self, timeout_ms: i32) -> Result<Option<KafkaMessage>, KafkaResponseError> {
+    /// Poll for new messages
+    ///
+    /// If this returns None no actual poll was executed, retry in that case.
+    pub fn poll(&self) -> Option<Result<KafkaMessage, KafkaResponseError>> {
         let message_ptr = unsafe {
-            bindings::rd_kafka_consumer_poll(self.inner, timeout_ms)
+            bindings::rd_kafka_consumer_poll(self.inner, self.timeout_ms)
         };
 
         if message_ptr.is_null() {
-            return Ok(None)
+            return None
         }
 
         let message = KafkaMessage::from_rd_message(message_ptr);
         if message.error().is_error() {
-            Err(message.error())
+            Some(Err(message.error()))
         } else {
-            Ok(Some(message))
+            Some(Ok(message))
         }
     }
 
     pub fn commit(&mut self) {
+        // TODO error handling
+        unsafe {
+            bindings::rd_kafka_commit(
+                self.inner,
+                ptr::null_mut(),
+                self.timeout_ms
+            );
+        }
+    }
+}
 
+impl Iterator for KafkaConsumer {
+    type Item = Result<KafkaMessage, KafkaResponseError>;
+
+    // NEXT: Make an iterator that can be configured to end or continue at EOF
+    //       This already sort of makes sense for the continue scenario. Error
+    //       wrapper needs to clearer.
+    fn next(&mut self) -> Option<Self::Item> {
+        // Loop until we get a result from polling
+        loop {
+            match self.poll() {
+                Some(result) => {
+                    println!("RESULT: {:?}", result);
+                    match result {
+                        Err(err) => {
+                            if !err.is_eof() {
+                                return Some(Err(err))
+                            }
+                        },
+                        Ok(message) => return Some(Ok(message))
+                    }
+                },
+                None => ()
+            }
+        }
     }
 }
 
@@ -105,6 +148,7 @@ impl Drop for KafkaConsumer {
     fn drop(&mut self) {
         if !self.inner.is_null() {
             unsafe {
+                // TODO error handling
                 bindings::rd_kafka_consumer_close(self.inner);
                 bindings::rd_kafka_destroy(self.inner);
             }
@@ -114,20 +158,26 @@ impl Drop for KafkaConsumer {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::config::*;
+    use super::*;
 
     #[test]
     fn test_new_subscribe_poll_unsubscribe() {
         let mut config = KafkaConfig::new();
         config.set("group.id", "test").expect("Setting group id should not fail");
+        let mut consumer = KafkaConsumer::new(config).expect("Creating consumer should not fail");
 
-        let consumer_result = KafkaConsumer::new(config);
-        assert!(consumer_result.is_ok());
-
-        let mut consumer = consumer_result.unwrap();
         consumer.subscribe(&["test_topic"]).expect("Subscribing should not fail");
-        assert!(consumer.poll(100).expect("Polling should not fail").is_none());
+        consumer.poll().expect("Polling should return some").expect("Polling should not fail");
         consumer.unsubscribe().expect("Unsubscribing should not fail");
+    }
+
+    #[test]
+    fn test_consume_no_group_id() {
+        let config = KafkaConfig::new();
+        let mut consumer = KafkaConsumer::new(config).expect("Creating consumer should not fail");
+
+        consumer.subscribe(&["test_topic"]).expect("Subscribing should not fail");
+        assert!(consumer.poll().expect("Should not be none").is_err());
     }
 }

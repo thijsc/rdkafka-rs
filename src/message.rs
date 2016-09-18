@@ -10,6 +10,7 @@ use super::KafkaResponseError;
 
 // TODO: How to handle no key?
 
+#[derive(Debug)]
 pub struct KafkaMessage {
     // If we created this message ourselves we need to
     // keep track of it so it doesn't get dropped.

@@ -5,9 +5,7 @@ use std::os::raw::c_void;
 
 use rdkafka_sys::bindings;
 
-use super::KafkaResponseError;
 use super::config::KafkaConfig;
-use super::message::KafkaMessage;
 
 #[derive(Debug,PartialEq)]
 pub enum ProduceError {
@@ -52,7 +50,6 @@ impl KafkaProducer {
 
     /// Asynchronously produce a message
     /// Payload and key content will be copied and message will be added to queue.
-    /// TODO: See if we can reliably use RD_KAFKA_MSG_F_FREE with a Rust Vector to avoid copying.
     pub fn produce(
         &self,
         topic: &str,
@@ -80,7 +77,7 @@ impl KafkaProducer {
             bindings::rd_kafka_produce(
                 topic,
                 partition.unwrap_or(super::RD_KAFKA_PARTITION_UA),
-                super::RD_KAFKA_MSG_F_COPY,
+                super::RD_KAFKA_MSG_F_COPY, // TODO We should set 0 and build up the vector again in the callback. See: https://github.com/edenhill/librdkafka/blob/master/INTRODUCTION.md
                 payload.as_ptr() as *mut c_void,
                 payload_len,
                 match key {

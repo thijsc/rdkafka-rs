@@ -7,6 +7,7 @@ use rdkafka_sys::bindings;
 
 pub mod config;
 pub mod consumer;
+pub mod error;
 pub mod message;
 pub mod producer;
 
@@ -31,6 +32,13 @@ impl KafkaResponseError {
             _ => true
         }
     }
+
+    pub fn is_eof(&self) -> bool {
+        match self.inner {
+            bindings::rd_kafka_resp_err_t::RD_KAFKA_RESP_ERR__PARTITION_EOF => true,
+            _ => false
+        }
+    }
 }
 
 impl fmt::Display for KafkaResponseError {
@@ -46,6 +54,15 @@ impl fmt::Display for KafkaResponseError {
 impl fmt::Debug for KafkaResponseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "KafkaResponseError ({})", self)
+    }
+}
+
+// TODO test
+pub fn shutdown() -> Result<(), ()> {
+    if unsafe { bindings::rd_kafka_wait_destroyed(2000) } == -1 {
+        Err(())
+    } else {
+        Ok(())
     }
 }
 

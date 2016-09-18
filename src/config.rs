@@ -74,6 +74,15 @@ impl KafkaConfig {
     }
 }
 
+impl Clone for KafkaConfig {
+    fn clone(&self) -> KafkaConfig {
+        let inner = unsafe {
+            bindings::rd_kafka_conf_dup(self.inner)
+        };
+        KafkaConfig { inner: inner }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -101,5 +110,19 @@ mod tests {
     fn test_get_not_set() {
         let config = KafkaConfig::new();
         assert!(config.get("key").is_none());
+    }
+
+    #[test]
+    fn test_clone() {
+        let mut config = KafkaConfig::new();
+        assert!(config.set("group.id", "group-1").is_ok());
+
+        let mut cloned = config.clone();
+        assert!(cloned.set("group.id", "group-2").is_ok());
+
+        // The inner config should be cloned too, setting something on the
+        // cloned config should not influence the original one.
+        assert_eq!(Some("group-1".to_owned()), config.get("group.id"));
+        assert_eq!(Some("group-2".to_owned()), cloned.get("group.id"));
     }
 }
